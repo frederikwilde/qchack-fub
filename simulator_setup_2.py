@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.1
+#       jupytext_version: 1.10.2
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -190,12 +190,14 @@ num_freqs = 75
 ground_sweep_freqs = default_qubit_freq + np.linspace(-20*MHz, 20*MHz, num_freqs)
 ground_freq_sweep_program = create_ground_freq_sweep_program(ground_sweep_freqs, drive_power=0.3)
 
-ground_freq_sweep_job = backend_sim.run(ground_freq_sweep_program, armonk_model).result()
+ground_freq_sweep_job = backend_sim.run(ground_freq_sweep_program, armonk_model)
+
+
 
 # +
 ### HOW TO GET THE DATA OUT OF THIS?
 # -
-
+ground_freq_sweep_job
 
 
 # Get the job data (average)
@@ -229,7 +231,11 @@ rabi_qobj = assemble(rabi_schedules,
                      shots=512)
 # -
 
-sim_result = backend_sim.run(rabi_qobj, armonk_model).result()
+sim_result = backend_sim.run(rabi_qobj, armonk_model)
+
+sim_result.result()
+
+sim_result.results=sim_result.result
 
 # +
 from qiskit.ignis.characterization.calibrations import RabiFitter
@@ -270,132 +276,29 @@ from qiskit.tools.jupyter import *
 
 # # Here we set the backend to FakeArmonk
 
-backend = backend_sim
-backend.configuration().open_pulse
 
-dt = armonk_backend.configuration().dt
-backend_defaults = backend.defaults()
+
+
 
 # # Here I set the scale factor to 1.
 
-GHz = 1.0e9 # Gigahertz
-MHz = 1.0e6 # Megahertz
-us = 1.0e-6 # Microseconds
-ns = 1.0e-9 # Nanoseconds
-qubit = 0 # qubit we will analyze
-default_qubit_freq = backend_defaults.qubit_freq_est[qubit] # Default qubit frequency in Hz. 
-print(f"Qubit {qubit} has an estimated frequency of {default_qubit_freq/ GHz} GHz.")
-# scale data (specific to each device)
-scale_factor = 1e-14
-# number of shots for our experiments
-NUM_SHOTS = 1024
-### Collect the necessary channels
-drive_chan = pulse.DriveChannel(qubit)
-meas_chan = pulse.MeasureChannel(qubit)
-acq_chan = pulse.AcquireChannel(qubit)
 
 
-def get_closest_multiple_of_16(num):
-    """Compute the nearest multiple of 16. Needed because pulse enabled devices require 
-    durations which are multiples of 16 samples.
-    """
-    return (int(num) - (int(num)%16))
 
 
-def get_job_data(job, average):
-    """Retrieve data from a job that has already run.
-    Args:
-        job (Job): The job whose data you want.
-        average (bool): If True, gets the data assuming data is an average.
-                        If False, gets the data assuming it is for single shots.
-    Return:
-        list: List containing job result data. 
-    """
-    job_results = job.result(timeout=120) # timeout parameter set to 120 s
-    result_data = []
-    for i in range(len(job_results.results)):
-        if average: # get avg data
-            result_data.append(job_results.get_memory(i)[qubit]*scale_factor) 
-        else: # get single data
-            result_data.append(job_results.get_memory(i)[:, qubit]*scale_factor)  
-    return result_data
 
 
-# +
-# Drive pulse parameters (us = microseconds)
-drive_sigma_us = 0.075                     # This determines the actual width of the gaussian
-drive_samples_us = drive_sigma_us*8        # This is a truncating parameter, because gaussians don't have 
-                                           # a natural finite length
-
-drive_sigma = get_closest_multiple_of_16(drive_sigma_us * us /dt)       # The width of the gaussian in units of dt
-drive_samples = get_closest_multiple_of_16(drive_samples_us * us /dt)   # The truncating parameter in units of dt
-# -
-
-# Find out which measurement map index is needed for this qubit
-meas_map_idx = None
-for i, measure_group in enumerate(armonk_backend.configuration().meas_map):
-    if qubit in measure_group:
-        meas_map_idx = i
-        break
-assert meas_map_idx is not None, f"Couldn't find qubit {qubit} in the meas_map!"
-
-# Get default measurement pulse from instruction schedule map
-inst_sched_map = backend_defaults.instruction_schedule_map
-measure = inst_sched_map.get('measure', qubits=armonk_backend.configuration().meas_map[meas_map_idx])
 
 
-def create_ground_freq_sweep_program(freqs, drive_power):
-    """Builds a program that does a freq sweep by exciting the ground state. 
-    Depending on drive power this can reveal the 0->1 frequency or the 0->2 frequency. 
-    Args:
-        freqs (np.ndarray(dtype=float)): Numpy array of frequencies to sweep.
-        drive_power (float) : Value of drive amplitude.
-    Raises:
-        ValueError: Raised if use more than 75 frequencies; currently, an error will be thrown on the backend 
-                    if you try to do this.
-    Returns:
-        Qobj: Program for ground freq sweep experiment.
-    """
-    if len(freqs) > 75:
-        raise ValueError("You can only run 75 schedules at a time.")
-    
-    # print information on the sweep
-    print(f"The frequency sweep will go from {freqs[0] / GHz} GHz to {freqs[-1]/ GHz} GHz \
-using {len(freqs)} frequencies. The drive power is {drive_power}.")
-    
-    # Define the drive pulse
-    ground_sweep_drive_pulse = pulse_lib.gaussian(duration=drive_samples,
-                                                  sigma=drive_sigma,
-                                                  amp=drive_power,
-                                                  name='ground_sweep_drive_pulse')
-    # Create the base schedule
-    schedule = pulse.Schedule(name='Frequency sweep starting from ground state.')
-    
-    schedule |= pulse.Play(ground_sweep_drive_pulse, drive_chan)
-    schedule |= measure << schedule.duration
-    
-    # define frequencies for the sweep
-    schedule_freqs = [{drive_chan: freq} for freq in freqs]
 
-    # assemble the program
-    # Note: we only require a single schedule since each does the same thing;
-    # for each schedule, the LO frequency that mixes down the drive changes
-    # this enables our frequency sweep
-    ground_freq_sweep_program = assemble(schedule,
-                                         backend=backend, 
-                                         meas_level=1,
-                                         meas_return='avg',
-                                         shots=NUM_SHOTS,
-                                         schedule_los=schedule_freqs)
-    
-    return ground_freq_sweep_program
 
-# We will sweep 40 MHz around the estimated frequency, with 75 frequencies
-num_freqs = 75
-ground_sweep_freqs = default_qubit_freq + np.linspace(-20*MHz, 20*MHz, num_freqs)
-ground_freq_sweep_program = create_ground_freq_sweep_program(ground_sweep_freqs, drive_power=0.3)
 
-ground_freq_sweep_job = backend.run(ground_freq_sweep_program)
+
+
+
+
+
+
 
 print(ground_freq_sweep_job.job_id())
 job_monitor(ground_freq_sweep_job)
