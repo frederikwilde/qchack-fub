@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: ipynb,py
+#     formats: ipynb,py:light
 #     text_representation:
 #       extension: .py
 #       format_name: light
@@ -26,7 +26,7 @@ drive_est = 6.35e7
 armonk_backend.defaults().qubit_freq_est = [freq_est]
 config.hamiltonian['h_str']= ['wq0*0.5*(I0-Z0)', 'omegad0*X0||D0'] # Model of Duffing oscillators, contains Hamiltonian parameters
 config.hamiltonian['vars'] = {'wq0': 2 * np.pi * freq_est, 'omegad0': drive_est}
-config.hamiltonian['qub'] = {'0': 2}
+config.hamiltonian['qub'] = {'0': 3}
 config.dt = 2.2222222222222221e-10
 
 from qiskit.providers.aer.pulse import PulseSystemModel
@@ -228,12 +228,20 @@ using {len(freqs)} frequencies. The drive power is {drive_power}.")
     
     return ground_freq_sweep_program
 
+
+
+
+
 # We will sweep 40 MHz around the estimated frequency, with 75 frequencies
 num_freqs = 75
 ground_sweep_freqs = default_qubit_freq + np.linspace(-20*MHz, 20*MHz, num_freqs)
 ground_freq_sweep_program = create_ground_freq_sweep_program(ground_sweep_freqs, drive_power=0.3)
 
 ground_freq_sweep_job = backend.run(ground_freq_sweep_program)
+
+
+
+
 
 print(ground_freq_sweep_job.job_id())
 job_monitor(ground_freq_sweep_job)
@@ -489,8 +497,8 @@ clf.fit(IQ_01_train, state_01_train)
 print(clf.predict([[-0.8, -1]]))
 
 # Set up the LDA
-#LDA_01 = LinearDiscriminantAnalysis()
-#LDA_01.fit(IQ_01_train, state_01_train)
+# LDA_01 = LinearDiscriminantAnalysis()
+# LDA_01.fit(IQ_01_train, state_01_train)
 
 
 # +
@@ -524,3 +532,22 @@ separatrixPlot(LDA_01, x_min, x_max, y_min, y_max, NUM_SHOTS)
 # -
 
 
+
+
+
+# do fit in Hz
+(ground_sweep_fit_params, 
+ ground_sweep_y_fit) = fit_function(ground_sweep_freqs,
+                                   ground_freq_sweep_data, 
+                                   lambda x, A, q_freq, B, C: (A / np.pi) * (B / ((x - q_freq)**2 + B**2)) + C,
+                                   [7, 4.975*GHz, 1*GHz, 3*GHz] # initial parameters for curve_fit
+                                   )
+
+# Note: we are only plotting the real part of the signal
+plt.scatter(ground_sweep_freqs/GHz, ground_freq_sweep_data, color='black')
+plt.plot(ground_sweep_freqs/GHz, ground_sweep_y_fit, color='red')
+plt.xlim([min(ground_sweep_freqs/GHz), max(ground_sweep_freqs/GHz)])
+plt.xlabel("Frequency [GHz]", fontsize=15)
+plt.ylabel("Measured Signal [a.u.]", fontsize=15)
+plt.title("0->1 Frequency Sweep", fontsize=15)
+plt.show()

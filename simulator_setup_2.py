@@ -36,18 +36,29 @@ from qiskit.test.mock.backends.armonk.fake_armonk import FakeArmonk
 armonk_backend = FakeArmonk()
 config = armonk_backend.configuration()
 
+
+
+armonk_backend._configuration.__dict__
+
 freq_est = 4.97e9
 drive_est = 6.35e7
 armonk_backend.defaults().qubit_freq_est = [freq_est]
 config.hamiltonian['h_str']= ['wq0*0.5*(I0-Z0)', 'omegad0*X0||D0'] # Model of Duffing oscillators, contains Hamiltonian parameters
 config.hamiltonian['vars'] = {'wq0': 2 * np.pi * freq_est, 'omegad0': drive_est}
-config.hamiltonian['qub'] = {'0': 2}
+config.hamiltonian['qub'] = {'0': 3}
+#config.hamiltonian['osc'] = {'dim_oscillators': 3}
 dt = 2.2222222222222221e-10
 config.dt = dt
 backend_defaults = armonk_backend.defaults()
 
+config.__dict__
+
 from qiskit.providers.aer.pulse import PulseSystemModel
 armonk_model = PulseSystemModel.from_backend(armonk_backend)
+
+armonk_model.hamiltonian.__dict__
+
+armonk_model.hamiltonian._subsystem_dims[0]=3
 
 # qubit list
 qubits = [0]
